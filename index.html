@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拾光手稿 - 萬能劇本格式產生器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 使用 docx 7.1.0 穩定版 -->
+    <script src="https://unpkg.com/docx@7.1.0/build/index.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;600;700&display=swap');
+
+        :root {
+            --color-bg-paper: #FDFBF7; /* 溫和手工紙色 */
+            --color-bg-app: #F4F0E6;   /* 燕麥底色 */
+            --color-text-main: #3D3A36; /* 炭灰色 */
+            --color-accent: #5F6F52;    /* 暮綠色 */
+            --color-accent-light: #A9B388; /* 草木綠 */
+            --color-border: #E6DFD3;    /* 細緻手稿線條色 */
+        }
+
+        body {
+            background-color: var(--color-bg-app);
+            font-family: 'Noto Serif TC', serif;
+            color: var(--color-text-main);
+            transition: all 0.3s;
+        }
+
+        /* 響應式編輯器：在電腦上為 A4 紙張，在手機上自動填滿 */
+        .editor-view {
+            width: 100%;
+            max-width: 100%;
+            min-height: calc(100vh - 180px);
+            background: var(--color-bg-paper);
+            margin: 120px auto 140px auto; 
+            padding: 24px 16px;
+            box-shadow: 0 4px 20px rgba(61,58,54, 0.08);
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            position: relative;
+        }
+
+        @media (min-width: 768px) {
+            .editor-view {
+                width: 210mm;
+                min-height: 297mm;
+                margin: 140px auto 60px auto;
+                padding: 2.5cm 3cm;
+                border-radius: 8px;
+            }
+        }
+
+        /* 封面資訊樣式 */
+        .title-page-section {
+            text-align: center;
+            margin-bottom: 2rem;
+            border-bottom: 1px dashed var(--color-border);
+            padding-bottom: 24px;
+        }
+        
+        .input-title {
+            font-size: 20pt;
+            font-weight: 700;
+            width: 100%;
+            text-align: center;
+            border: none;
+            outline: none;
+            background: transparent;
+            margin-bottom: 12px;
+            font-family: "DFKai-SB", "標楷體", "Noto Serif TC", serif;
+            color: var(--color-text-main);
+            border-bottom: 1px solid transparent;
+            transition: border-bottom 0.2s;
+        }
+        .input-title:focus {
+            border-bottom: 1px solid var(--color-accent-light);
+        }
+        
+        .input-author {
+            font-size: 12pt;
+            width: 100%;
+            text-align: center;
+            border: none;
+            outline: none;
+            background: transparent;
+            font-family: "DFKai-SB", "標楷體", "Noto Serif TC", serif;
+            color: #7A756E;
+            border-bottom: 1px solid transparent;
+            transition: border-bottom 0.2s;
+        }
+        .input-author:focus {
+            border-bottom: 1px solid var(--color-accent-light);
+        }
+
+        /* 電影標準格式樣式 */
+        .view-standard {
+            font-family: "DFKai-SB", "標楷體", "Noto Serif TC", serif;
+            font-size: 11pt;
+            line-height: 2;
+        }
+
+        @media (min-width: 768px) {
+            .view-standard {
+                font-size: 12pt;
+            }
+        }
+
+        .script-line {
+            position: relative;
+            outline: none;
+            min-height: 1.5em;
+            margin-bottom: 4px;
+            width: 100%;
+            display: block;
+            clear: both;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .script-line:focus { 
+            background: rgba(95, 111, 82, 0.04); 
+        }
+
+        .type-heading { font-weight: bold; margin-top: 1.8em; border-bottom: 1px solid var(--color-text-main); text-align: left; color: var(--color-text-main); }
+        .type-action { text-align: left; }
+        .type-action::before { content: "△ "; }
+        .type-character { text-align: left; margin-top: 1.2em; width: 100%; display: block; font-weight: bold; color: var(--color-accent); }
+        .type-parenthetical { text-align: left; font-size: 0.9em; width: 100%; margin: 0; display: block; opacity: 0.75; }
+        .type-dialogue { text-align: left; width: 100%; margin: 0; display: block; line-height: 1.8; padding-left: 0.5rem; }
+        .type-transition { text-align: right; margin-top: 1.2em; font-weight: bold; color: #555; }
+        .type-note { text-align: left; font-weight: bold; color: var(--color-accent); border-left: 3px solid var(--color-accent); padding-left: 8px; margin: 1em 0; }
+        .type-sfx { text-align: left; font-style: italic; color: #9A3B3B; }
+        .type-sfx::before { content: "［音效］"; font-style: normal; font-weight: bold; }
+
+        /* 表格與分鏡模式在手機上的滾動封裝 */
+        .table-responsive-container {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            min-width: 600px; 
+        }
+        
+        th, td { 
+            border: 1px solid var(--color-border); 
+            padding: 10px; 
+            vertical-align: top; 
+            text-align: left; 
+        }
+        
+        th { 
+            background: #FAF8F4; 
+            color: #555; 
+            font-weight: 600; 
+            white-space: nowrap; 
+            font-size: 11px;
+            letter-spacing: 0.05em;
+        }
+        
+        .editable-cell { 
+            outline: none; 
+            min-height: 40px; 
+        }
+
+        /* 分鏡表專屬樣式 */
+        .storyboard-img-box {
+            width: 140px;
+            height: 80px;
+            border: 1px dashed var(--color-accent-light);
+            background-color: #FAF8F4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #7A756E;
+            font-size: 11px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            overflow: hidden;
+            position: relative;
+            border-radius: 4px;
+        }
+        .storyboard-img-box:hover {
+            border-color: var(--color-accent);
+            background-color: #F4F1EA;
+        }
+        .storyboard-img-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        td[contenteditable="true"]:hover { background-color: #FAF9F5; }
+        td[contenteditable="true"]:focus { background-color: #FFF; outline: 1.5px solid var(--color-accent-light); }
+
+        /* 文青雅緻頂部工具列 */
+        .toolbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            background: rgba(253, 251, 247, 0.95); 
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--color-border);
+            z-index: 2000;
+            padding: 8px 12px;
+            display: flex; flex-direction: column; gap: 6px;
+            box-shadow: 0 2px 12px rgba(61,58,54, 0.04);
+        }
+
+        @media (min-width: 768px) {
+            .toolbar {
+                padding: 12px 24px;
+                gap: 8px;
+            }
+        }
+
+        .toolbar-row {
+            display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 6px; overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .toolbar-row::-webkit-scrollbar { display: none; }
+
+        .btn-mode { 
+            padding: 6px 12px; 
+            border-radius: 20px; 
+            font-size: 12px;
+            font-weight: 600; 
+            transition: all 0.2s; 
+            border: 1px solid transparent; 
+            white-space: nowrap; 
+            color: #7A756E;
+        }
+        .btn-mode.active { 
+            background: var(--color-accent); 
+            color: #FFF; 
+        }
+        
+        .term-btn { 
+            font-size: 12px; 
+            padding: 5px 10px; 
+            border: 1px solid var(--color-border); 
+            border-radius: 4px; 
+            background: #fff; 
+            color: var(--color-text-main);
+            transition: all 0.2s; 
+            white-space: nowrap; 
+            cursor: pointer; 
+        }
+        .term-btn:hover { 
+            border-color: var(--color-accent-light); 
+            background: #FAF9F5;
+        }
+
+        /* 底部手勢快捷鍵選單 */
+        .mobile-dock {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(253, 251, 247, 0.97);
+            border-top: 1px solid var(--color-border);
+            box-shadow: 0 -4px 15px rgba(61,58,54, 0.06);
+            z-index: 2000;
+            padding: 8px 12px calc(8px + env(safe-area-inset-bottom)) 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        @media (min-width: 768px) {
+            .mobile-dock { display: none; } 
+        }
+
+        .btn-action-vintage {
+            background-color: #FAF8F4;
+            color: var(--color-accent);
+            border: 1px solid var(--color-accent-light);
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .btn-action-vintage:hover, .btn-action-vintage:active {
+            background-color: var(--color-accent);
+            color: #FFF;
+        }
+
+        .btn-delete-vintage {
+            background-color: #FFF5F5;
+            color: #9A3B3B;
+            border: 1px solid #ECAAAA;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .btn-delete-vintage:hover, .btn-delete-vintage:active {
+            background-color: #9A3B3B;
+            color: #FFF;
+        }
+
+        .btn-draft-vintage {
+            background-color: #F4F3EF;
+            color: #5D5A56;
+            border: 1px solid var(--color-border);
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .btn-draft-vintage:hover, .btn-draft-vintage:active {
+            background-color: var(--color-border);
+            color: var(--color-text-main);
+        }
+
+        .tbl-del-btn { 
+            color: #9A3B3B; 
+            cursor: pointer; 
+            font-weight: bold; 
+            padding: 8px 12px; 
+            border-radius: 50%; 
+            background: #FFF0F0; 
+            display: inline-block; 
+            font-size: 12px;
+            line-height: 1;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .tbl-del-btn:hover, .tbl-del-btn:active {
+            background: #ECAAAA;
+            color: #FFF;
+        }
+
+        @media print { 
+            .toolbar, .mobile-dock { display: none; } 
+            body { background: white; padding: 0; } 
+            .editor-view { box-shadow: none; margin: 0; border: none; } 
+        }
+    </style>
+</head>
+<body class="pb-24 md:pb-8">
+    <input type="file" id="img-upload-input" accept="image/*" style="display: none;">
+
+    <div class="toolbar">
+        <div class="toolbar-row justify-center border-b pb-2 border-[#E6DFD3]">
+            <div class="flex gap-1 bg-[#F4F0E6] p-1 rounded-full shrink-0">
+                <button id="mode-outline" class="btn-mode" onclick="switchMode('outline')">分場大綱</button>
+                <button id="mode-standard" class="btn-mode active" onclick="switchMode('standard')">劇本模式</button>
+                <button id="mode-table" class="btn-mode" onclick="switchMode('table')">拍攝表</button>
+                <button id="mode-storyboard" class="btn-mode" onclick="switchMode('storyboard')">分鏡表</button>
+            </div>
+        </div>
+
+        <div class="toolbar-row">
+            <div class="flex gap-1 md:gap-2 items-center">
+                <!-- 重大修改：使用 onmousedown 攔截並 preventDefault 防止手機失焦 -->
+                <button class="btn-action-vintage flex items-center gap-1" onmousedown="addNewScene(); event.preventDefault();">
+                    <span>🎬</span> + 場次
+                </button>
+                <button id="btn-del-scene-std" class="btn-delete-vintage flex items-center gap-1" onmousedown="deleteCurrentSceneStandard(); event.preventDefault();">
+                    <span>🗑️</span> 刪除此場
+                </button>
+
+                <div id="standard-tools-desktop" class="hidden md:flex gap-1 items-center ml-2 border-l pl-2 border-[#E6DFD3]">
+                    <button class="term-btn font-semibold" onmousedown="handleInsert('heading'); event.preventDefault();">標題</button>
+                    <button class="term-btn" onmousedown="handleInsert('action'); event.preventDefault();">動作</button>
+                    <button class="term-btn font-semibold text-[#5F6F52]" onmousedown="handleInsert('character'); event.preventDefault();">角色</button>
+                    <button class="term-btn font-semibold text-[#8B9A46]" onmousedown="handleInsert('dialogue'); event.preventDefault();">對白</button>
+                    <button class="term-btn" onmousedown="handleInsert('transition'); event.preventDefault();">轉場</button>
+                    <button class="term-btn text-[#4B6584]" onmousedown="handleInsert('note'); event.preventDefault();">鏡頭</button>
+                    <button class="term-btn text-[#9A3B3B]" onmousedown="handleInsert('sfx'); event.preventDefault();">音效</button>
+                </div>
+
+                <div id="table-tools" class="hidden gap-1 items-center ml-2">
+                    <button class="term-btn font-semibold text-[#5F6F52]" onclick="addColumn()">+ 增欄</button>
+                    <button class="term-btn font-semibold text-[#9A3B3B]" onclick="deleteColumn()">- 刪欄</button>
+                </div>
+            </div>
+
+            <div class="flex gap-1 md:gap-2 items-center">
+                <div class="hidden md:flex gap-1">
+                    <button class="btn-draft-vintage" onclick="saveDraft()">儲存</button>
+                    <button class="btn-draft-vintage" onclick="loadDraft()">復原</button>
+                    <button class="btn-draft-vintage text-[#9A3B3B]" onclick="clearDraft()">刪暫存</button>
+                </div>
+                
+                <button class="btn-delete-vintage text-[#9A3B3B] px-2" onclick="clearAll()">清空</button>
+                <button class="px-3 py-1.5 bg-[#5F6F52] hover:bg-[#4A573E] text-white rounded-md font-semibold text-xs md:text-sm shrink-0 transition" onclick="handleExport()">匯出 Word</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="canvas-outline" class="editor-view view-outline hidden">
+        <h1 class="text-lg font-bold mb-4 text-center tracking-widest border-b pb-2 border-dashed">分場大綱</h1>
+        <div class="table-responsive-container">
+            <table id="outline-table">
+                <thead>
+                    <tr>
+                        <th width="8%" class="text-stone-600 font-bold text-center">刪除</th>
+                        <th width="10%" class="text-stone-600 font-bold">場次</th>
+                        <th width="25%" class="text-stone-600 font-bold">場景標題</th>
+                        <th width="57%" class="text-stone-600 font-bold">重點大綱 (Synopsis)</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="text-center text-xs text-stone-400 mt-4 italic">隨心記下大綱結構，不會更動到正式劇本內容</div>
+    </div>
+
+    <div id="canvas-standard" class="editor-view view-standard">
+        <div class="title-page-section">
+            <input type="text" id="script-title" class="input-title" placeholder="請輸入劇名" value="未命名劇本">
+            <input type="text" id="script-author" class="input-author" placeholder="編劇姓名" value="編劇：">
+        </div>
+        <div id="script-content" class="min-h-[400px]" contenteditable="true" spellcheck="false">
+            <div class="script-line type-heading" data-type="heading">1. 內。創意會議室。日間</div>
+            <div class="script-line type-action" data-type="action">編劇切換到「分場大綱」模式，開始構思故事結構。</div>
+            <div class="script-line type-character" data-type="character">編劇</div>
+            <div class="script-line type-dialogue" data-type="dialogue">這一次修復保證絕對能刪除成功了！</div>
+        </div>
+    </div>
+
+    <div id="canvas-table" class="editor-view view-table hidden">
+        <h1 class="text-lg font-bold mb-4 text-center tracking-widest border-b pb-2 border-dashed">拍片欄位表</h1>
+        <div class="table-responsive-container">
+            <table id="script-table">
+                <thead>
+                    <tr id="table-header-row">
+                        <th width="8%" class="text-stone-600 font-bold text-center">刪除</th>
+                        <th width="10%" class="text-stone-600 font-bold">場次</th>
+                        <th width="20%" class="text-stone-600 font-bold">地點/時間</th>
+                        <th width="20%" class="text-stone-600 font-bold">人物/備註</th>
+                        <th width="42%" class="text-stone-600 font-bold">內容描述</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="canvas-storyboard" class="editor-view view-storyboard hidden">
+        <h1 class="text-lg font-bold mb-4 text-center tracking-widest border-b pb-2 border-dashed">視覺分鏡表</h1>
+        <div class="table-responsive-container">
+            <table id="storyboard-table">
+                <thead>
+                    <tr>
+                        <th width="8%" class="text-stone-600 font-bold text-center">刪除</th>
+                        <th width="10%" class="text-stone-600 font-bold">鏡號</th>
+                        <th width="32%" class="text-stone-600 font-bold">畫面示意 (Visual)</th>
+                        <th width="30%" class="text-stone-600 font-bold">內容/動作 (Visual Text)</th>
+                        <th width="20%" class="text-stone-600 font-bold">聲音/備註 (Audio Text)</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="mobile-dock md:hidden">
+        <div id="standard-tools-mobile" class="flex gap-2 overflow-x-auto py-1 scrollbar-none border-b border-[#E6DFD3] pb-2">
+            <!-- 手機版工具標籤同步加上防失焦 -->
+            <button class="term-btn font-semibold text-stone-700 bg-stone-100" onmousedown="handleInsert('heading'); event.preventDefault();">標題</button>
+            <button class="term-btn text-stone-700" onmousedown="handleInsert('action'); event.preventDefault();">動作</button>
+            <button class="term-btn font-semibold text-[#5F6F52] border-[#A9B388]" onmousedown="handleInsert('character'); event.preventDefault();">角色</button>
+            <button class="term-btn font-semibold text-[#8B9A46]" onmousedown="handleInsert('dialogue'); event.preventDefault();">對白</button>
+            <button class="term-btn text-stone-500" onmousedown="handleInsert('transition'); event.preventDefault();">轉場</button>
+            <button class="term-btn text-[#4B6584]" onmousedown="handleInsert('note'); event.preventDefault();">鏡頭</button>
+            <button class="term-btn text-[#9A3B3B]" onmousedown="handleInsert('sfx'); event.preventDefault();">音效</button>
+        </div>
+        <div class="flex justify-between items-center text-xs">
+            <span class="text-stone-500 font-semibold">草稿箱:</span>
+            <div class="flex gap-2">
+                <button class="btn-draft-vintage" onclick="saveDraft()">💾 保存</button>
+                <button class="btn-draft-vintage" onclick="loadDraft()">🔄 復原</button>
+                <button class="text-[#9A3B3B] text-[10px]" onclick="clearDraft()">清空暫存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvasStd = document.getElementById('script-content');
+        const canvasTbl = document.getElementById('canvas-table');
+        const canvasSb = document.getElementById('canvas-storyboard');
+        const canvasOut = document.getElementById('canvas-outline');
+        const fileInput = document.getElementById('img-upload-input');
+        
+        let currentMode = 'standard';
+        let lastFocusedLine = null;
+        let currentUploadTargetId = null;
+
+        let customColumns = []; 
+        let sceneMetadata = {}; 
+
+        const SCENE_TYPES = ['heading', 'action', 'note', 'sfx', 'character', 'parenthetical', 'dialogue', 'transition'];
+
+        // ========== 暫存功能 ==========
+        function saveDraft() {
+            try {
+                if (currentMode === 'table') saveCurrentTableState();
+                if (currentMode === 'outline') saveCurrentOutlineState();
+                
+                const draftData = {
+                    scriptContent: canvasStd.innerHTML,
+                    scriptTitle: document.getElementById('script-title').value,
+                    scriptAuthor: document.getElementById('script-author').value,
+                    sceneMetadata: JSON.parse(JSON.stringify(sceneMetadata)),
+                    customColumns: [...customColumns],
+                    currentMode: currentMode
+                };
+                
+                localStorage.setItem('scriptDraft', JSON.stringify(draftData));
+            } catch (e) {
+                console.error('暫存失敗: ' + e.message);
+            }
+        }
+
+        function loadDraft() {
+            try {
+                const draftStr = localStorage.getItem('scriptDraft');
+                if (!draftStr) return alert('⚠️ 沒有找到任何暫存手稿');
+                if (!confirm('⚠️ 復原暫存會覆蓋當前所有內容，是否繼續？')) return;
+
+                const draftData = JSON.parse(draftStr);
+                
+                canvasStd.innerHTML = draftData.scriptContent;
+                document.getElementById('script-title').value = draftData.scriptTitle || '未命名劇本';
+                document.getElementById('script-author').value = draftData.scriptAuthor || '編劇：';
+                
+                sceneMetadata = draftData.sceneMetadata || {};
+                customColumns = draftData.customColumns || [];
+                
+                switchMode(draftData.currentMode || 'standard');
+                
+                if (currentMode === 'table') updateTableContent();
+                if (currentMode === 'storyboard') updateStoryboardContent();
+                if (currentMode === 'outline') updateOutlineContent();
+                
+                alert('✅ 稿件復原成功！');
+            } catch (e) {
+                alert('❌ 復原失敗：' + e.message);
+            }
+        }
+
+        function clearDraft() {
+            if (!confirm('❌ 確定要刪除所有備份手稿數據嗎？')) return;
+            localStorage.removeItem('scriptDraft');
+            alert('✅ 暫存備份已清除！');
+        }
+
+        function initAutoSave() {
+            canvasStd.addEventListener('input', debounce(saveDraft, 3000));
+            document.getElementById('script-title').addEventListener('change', saveDraft);
+            document.getElementById('script-author').addEventListener('change', saveDraft);
+            document.addEventListener('input', (e) => {
+                if (e.target.isContentEditable && 
+                    (e.target.closest('#script-table') || 
+                     e.target.closest('#storyboard-table') || 
+                     e.target.closest('#outline-table'))) {
+                    debounce(saveDraft, 3000)();
+                }
+            });
+            fileInput.addEventListener('change', saveDraft);
+        }
+
+        function debounce(func, delay) {
+            let timer;
+            return function() {
+                clearTimeout(timer);
+                timer = setTimeout(() => func.apply(this, arguments), delay);
+            };
+        }
+
+        window.addEventListener('load', () => {
+            initAutoSave();
+            const hasDraft = localStorage.getItem('scriptDraft');
+            if (hasDraft && confirm('👋 偵測到未寫完的草稿，是否立即恢復上次寫作狀態？')) {
+                loadDraft();
+            }
+        });
+
+        // ========== 影像與編輯核心 ==========
+        function triggerImageUpload(sceneId) {
+            currentUploadTargetId = sceneId;
+            fileInput.value = '';
+            fileInput.click();
+        }
+
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && currentUploadTargetId) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    const base64Img = evt.target.result;
+                    if (!sceneMetadata[currentUploadTargetId]) sceneMetadata[currentUploadTargetId] = {};
+                    sceneMetadata[currentUploadTargetId]['visualImage'] = base64Img;
+                    updateStoryboardContent();
+                    saveDraft();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function ensureInitialLine() {
+            if (canvasStd.children.length === 0 || (canvasStd.children.length === 1 && canvasStd.firstChild.nodeName === 'BR')) {
+                canvasStd.innerHTML = '';
+                const line = createLine('action');
+                canvasStd.appendChild(line);
+                if (currentMode === 'standard') {
+                    placeCaretAtEnd(line);
+                }
+            }
+        }
+
+        function createLine(type, text = '&#8203;') {
+            const div = document.createElement('div');
+            div.className = `script-line type-${type}`;
+            div.setAttribute('data-type', type);
+            div.innerHTML = text;
+            return div;
+        }
+
+        function placeCaretAtEnd(el) {
+            el.focus();
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            lastFocusedLine = el;
+        }
+
+        canvasStd.addEventListener('mousedown', () => setTimeout(ensureInitialLine, 0));
+
+        // 改良：全域綁定更新焦點行
+        function updateFocusedLine() {
+            if (currentMode !== 'standard') return;
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0 && sel.anchorNode) {
+                let node = sel.anchorNode;
+                if (canvasStd.contains(node)) {
+                    lastFocusedLine = node.nodeType === 1 ? node.closest('.script-line') : node.parentElement.closest('.script-line');
+                }
+            }
+        }
+        document.addEventListener('selectionchange', updateFocusedLine);
+        canvasStd.addEventListener('click', updateFocusedLine);
+        canvasStd.addEventListener('keyup', updateFocusedLine);
+        canvasStd.addEventListener('touchstart', updateFocusedLine, {passive: true});
+
+        canvasStd.addEventListener('keydown', (e) => {
+            ensureInitialLine();
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const currentLine = lastFocusedLine || canvasStd.lastElementChild;
+                const currentType = currentLine ? currentLine.getAttribute('data-type') : 'action';
+                const flow = { 
+                    'heading': 'action', 'action': 'action', 'note': 'action', 'sfx': 'action',
+                    'character': 'dialogue', 'parenthetical': 'dialogue', 'dialogue': 'character',
+                    'transition': 'heading'
+                };
+                const nextLine = createLine(flow[currentType] || 'action');
+                currentLine ? currentLine.after(nextLine) : canvasStd.appendChild(nextLine);
+                placeCaretAtEnd(nextLine);
+            }
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                if (lastFocusedLine) {
+                    const currentType = lastFocusedLine.getAttribute('data-type');
+                    const nextIndex = (SCENE_TYPES.indexOf(currentType) + 1) % SCENE_TYPES.length;
+                    applyType(lastFocusedLine, SCENE_TYPES[nextIndex]);
+                }
+            }
+        });
+
+        function applyType(line, type) {
+            line.className = `script-line type-${type}`;
+            line.setAttribute('data-type', type);
+            line.style.display = 'none'; line.offsetHeight; line.style.display = 'block';
+        }
+
+        function handleInsert(type) {
+            if (currentMode !== 'standard') switchMode('standard');
+            if (lastFocusedLine && canvasStd.contains(lastFocusedLine)) {
+                applyType(lastFocusedLine, type);
+                placeCaretAtEnd(lastFocusedLine);
+            } else {
+                const newLine = createLine(type);
+                canvasStd.appendChild(newLine);
+                placeCaretAtEnd(newLine);
+            }
+            saveDraft();
+        }
+
+        function clearAll() {
+            if (!confirm('確定要清空所有內容嗎？')) return;
+            canvasStd.innerHTML = '';
+            sceneMetadata = {}; 
+            ensureInitialLine();
+            if (currentMode === 'table') updateTableContent();
+            if (currentMode === 'storyboard') updateStoryboardContent();
+            if (currentMode === 'outline') updateOutlineContent();
+            saveDraft();
+        }
+
+        function getNextSceneNumber() {
+            let maxNum = 0;
+            const lines = canvasStd.querySelectorAll('.type-heading');
+            lines.forEach(line => {
+                const match = line.innerText.match(/^(\d+)/);
+                if (match) {
+                    const num = parseInt(match[1]);
+                    if (num > maxNum) maxNum = num;
+                }
+            });
+            return maxNum + 1;
+        }
+
+        function addNewScene() {
+            const nextNum = getNextSceneNumber();
+            const headingText = `${nextNum}. 內/外。地點。時間`;
+            const headingLine = createLine('heading', headingText);
+            const actionLine = createLine('action', '');
+
+            if (currentMode === 'table') syncTableToStandard();
+            if (currentMode === 'storyboard') syncStoryboardToStandard();
+            if (currentMode === 'outline') saveCurrentOutlineState();
+
+            canvasStd.appendChild(headingLine);
+            canvasStd.appendChild(actionLine);
+
+            if (currentMode === 'table') updateTableContent();
+            else if (currentMode === 'storyboard') updateStoryboardContent();
+            else if (currentMode === 'outline') updateOutlineContent();
+            else {
+                placeCaretAtEnd(headingLine);
+                headingLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            
+            if(currentMode !== 'standard') {
+                setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 100);
+            }
+            saveDraft();
+        }
+
+        function getScenesFromCanvas() {
+            const lines = Array.from(canvasStd.querySelectorAll('.script-line'));
+            let currentScene = { id: '', loc: '', notes: [], content: [], lines: [] };
+            let scenes = [];
+
+            lines.forEach(line => {
+                const type = line.getAttribute('data-type');
+                const text = line.innerText.replace(/\u200B/g, '').trim();
+                
+                if (type === 'heading') {
+                    if (currentScene.lines.length > 0) scenes.push({...currentScene});
+                    const parts = text.split('.');
+                    currentScene = { 
+                        id: parts[0] || '', 
+                        loc: text.substring(text.indexOf('.') + 1).trim() || text, 
+                        notes: [], 
+                        content: [],
+                        lines: [line] 
+                    };
+                } else {
+                    currentScene.lines.push(line);
+                    if (!text) return;
+                    if (type === 'note' || type === 'sfx') currentScene.notes.push(text);
+                    currentScene.content.push({ type, text });
+                }
+            });
+            if (currentScene.lines.length > 0) scenes.push(currentScene);
+            return scenes;
+        }
+
+        // ================= 終極刪除邏輯核心 =================
+
+        // 1. 劇本模式：含智能偵測備案刪除法
+        function deleteCurrentSceneStandard() {
+            let activeNode = lastFocusedLine;
+            const sel = window.getSelection();
+            
+            // 當下即時捕捉最新焦點
+            if (sel.rangeCount > 0 && canvasStd.contains(sel.anchorNode)) {
+                activeNode = sel.anchorNode.nodeType === 1 ? sel.anchorNode.closest('.script-line') : sel.anchorNode.parentElement.closest('.script-line');
+            }
+
+            // 過濾掉遺失參照的死結點
+            if (activeNode && !canvasStd.contains(activeNode)) {
+                activeNode = null;
+            }
+
+            const scenes = getScenesFromCanvas();
+            let sceneToDelete = null;
+
+            if (activeNode) {
+                sceneToDelete = scenes.find(s => s.lines.includes(activeNode));
+            }
+
+            // 若完全沒有偵測到游標焦點的智能備案：詢問是否刪除最後一場
+            if (!sceneToDelete && scenes.length > 0) {
+                if (confirm("⚠️ 未偵測到游標停駐在哪一場戲。\n\n請問是否要直接刪除【最後一場戲】？")) {
+                    sceneToDelete = scenes[scenes.length - 1];
+                } else {
+                    return;
+                }
+            } else if (!sceneToDelete) {
+                return alert("劇本已無可刪除的內容。");
+            } else {
+                if (!confirm(`確定要刪除整場戲「${sceneToDelete.id} ${sceneToDelete.loc}」嗎？`)) return;
+            }
+
+            if (sceneToDelete) {
+                // 物理拔除 HTML 節點
+                sceneToDelete.lines.forEach(line => {
+                    if (line && line.parentNode) line.remove();
+                });
+                
+                // 清除附屬資料庫
+                if (sceneToDelete.id && sceneMetadata[sceneToDelete.id]) {
+                    delete sceneMetadata[sceneToDelete.id];
+                }
+
+                lastFocusedLine = null;
+                ensureInitialLine();
+                saveDraft();
+            }
+        }
+
+        // 2. 表格 / 分鏡表 / 大綱模式：物理拔除列後重繪法
+        function deleteScene(btnElement) {
+            if (!confirm('確定要刪除這場戲嗎？（此操作將一併刪除對應的劇本內容）')) return;
+
+            const tr = btnElement.closest('tr');
+            const tbody = tr.parentElement;
+            const index = Array.from(tbody.children).indexOf(tr);
+            
+            // 抓取準備刪除的場次 ID 以便後續清除圖文資料庫
+            const targetIdEl = tr.querySelector('.cell-id');
+            const targetId = targetIdEl ? targetIdEl.innerText.trim() : '';
+
+            // 大綱模式不參與雙向同步，需另外處理
+            if (currentMode === 'outline') {
+                saveCurrentOutlineState();
+                const scenes = getScenesFromCanvas();
+                const targetScene = scenes[index];
+                if (targetScene) {
+                    targetScene.lines.forEach(line => line.remove());
+                }
+                tr.remove(); // 直接拔除畫面上的列
+            } else {
+                // 表格與分鏡模式：直接拔除該列，然後強制讓剩餘的列覆寫主畫布！
+                if (currentMode === 'table') saveCurrentTableState();
+                
+                tr.remove(); // 🔥 關鍵：先物理拔除，確保不會產生空白行錯位
+
+                if (currentMode === 'table') syncTableToStandard();
+                if (currentMode === 'storyboard') syncStoryboardToStandard();
+            }
+
+            // 清理這場戲的圖片與自訂欄位暫存
+            if (targetId && sceneMetadata[targetId]) {
+                delete sceneMetadata[targetId];
+            }
+
+            ensureInitialLine();
+            saveDraft();
+        }
+
+        // =================================================
+
+        function addColumn() {
+            const colName = prompt("請輸入新欄位名稱（例如：道具、備註）：");
+            if (colName && !customColumns.includes(colName)) {
+                saveCurrentTableState();
+                customColumns.push(colName);
+                updateTableContent();
+            }
+        }
+
+        function deleteColumn() {
+            if (customColumns.length === 0) return alert("沒有自訂欄位");
+            const name = prompt(`輸入刪除欄位：\n現有: ${customColumns.join(', ')}`);
+            if (name) {
+                const idx = customColumns.indexOf(name);
+                if (idx > -1) {
+                    saveCurrentTableState();
+                    customColumns.splice(idx, 1);
+                    updateTableContent();
+                }
+            }
+        }
+
+        function saveCurrentTableState() {
+            if (currentMode !== 'table') return;
+            const rows = document.querySelectorAll('#script-table tbody tr');
+            rows.forEach(row => {
+                const idCell = row.querySelector('.cell-id');
+                if (!idCell) return;
+                const id = idCell.innerText.trim();
+                if (!id) return;
+                if (!sceneMetadata[id]) sceneMetadata[id] = {};
+                customColumns.forEach(col => {
+                    const cell = row.querySelector(`.cell-custom[data-col="${col}"]`);
+                    if (cell) sceneMetadata[id][col] = cell.innerText;
+                });
+            });
+        }
+
+        function saveCurrentOutlineState() {
+            if (currentMode !== 'outline') return;
+            const rows = document.querySelectorAll('#outline-table tbody tr');
+            rows.forEach(row => {
+                const idCell = row.querySelector('.cell-id');
+                if(!idCell) return;
+                const id = idCell.innerText.trim();
+                const synopsisCell = row.querySelector('.cell-synopsis');
+                if(id && synopsisCell) {
+                    if (!sceneMetadata[id]) sceneMetadata[id] = {};
+                    sceneMetadata[id]['synopsis'] = synopsisCell.innerText;
+                }
+            });
+        }
+
+        function switchMode(mode) {
+            if (currentMode === mode) return;
+            
+            if (currentMode === 'table') {
+                saveCurrentTableState();
+                syncTableToStandard();
+            } else if (currentMode === 'storyboard') {
+                syncStoryboardToStandard();
+            } else if (currentMode === 'outline') {
+                saveCurrentOutlineState();
+            }
+
+            currentMode = mode;
+            ['standard', 'table', 'storyboard', 'outline'].forEach(m => {
+                document.getElementById(`mode-${m}`).classList.toggle('active', m === mode);
+            });
+            
+            const stdToolsMobile = document.getElementById('standard-tools-mobile');
+            if (stdToolsMobile) {
+                stdToolsMobile.style.display = mode === 'standard' ? 'flex' : 'none';
+            }
+            document.getElementById('table-tools').style.display = mode === 'table' ? 'flex' : 'none';
+            document.getElementById('btn-del-scene-std').style.display = mode === 'standard' ? 'flex' : 'none';
+
+            document.getElementById('canvas-standard').classList.add('hidden');
+            canvasTbl.classList.add('hidden');
+            canvasSb.classList.add('hidden');
+            canvasOut.classList.add('hidden');
+
+            if (mode === 'table') {
+                updateTableContent();
+                canvasTbl.classList.remove('hidden');
+            } else if (mode === 'storyboard') {
+                updateStoryboardContent();
+                canvasSb.classList.remove('hidden');
+            } else if (mode === 'outline') {
+                updateOutlineContent();
+                canvasOut.classList.remove('hidden');
+            } else {
+                document.getElementById('canvas-standard').classList.remove('hidden');
+                ensureInitialLine();
+            }
+        }
+
+        function updateTableContent() {
+            const headerRow = document.getElementById('table-header-row');
+            while (headerRow.children.length > 5) headerRow.removeChild(headerRow.lastChild);
+            customColumns.forEach(col => {
+                const th = document.createElement('th');
+                th.className = "text-stone-600 font-bold";
+                th.innerText = col;
+                headerRow.appendChild(th);
+            });
+
+            const tbody = document.querySelector('#script-table tbody');
+            tbody.innerHTML = '';
+            
+            const scenes = getScenesFromCanvas();
+            scenes.forEach((s, index) => {
+                const tr = document.createElement('tr');
+                const contentHtml = s.content.map(c => {
+                    let fmt = c.text;
+                    if (c.type === 'action') fmt = `△ ${c.text}`;
+                    if (c.type === 'character') fmt = `<b>【${c.text}】</b>`;
+                    if (c.type === 'dialogue') fmt = `「${c.text}」`;
+                    if (c.type === 'transition') fmt = `<div style="text-align:right"><i>${c.text}</i></div>`;
+                    return `<div>${fmt}</div>`;
+                }).join('');
+
+                let html = `
+                    <td class="text-center align-middle"><span class="tbl-del-btn" onclick="deleteScene(this)">✕</span></td>
+                    <td contenteditable="true" class="cell-id font-semibold">${s.id}</td>
+                    <td contenteditable="true" class="cell-loc">${s.loc}</td>
+                    <td contenteditable="true" class="cell-cast">${s.notes.join('<br>')}</td>
+                    <td contenteditable="true" class="editable-cell cell-content">${contentHtml}</td>
+                `;
+
+                customColumns.forEach(col => {
+                    const val = (sceneMetadata[s.id] && sceneMetadata[s.id][col]) || '';
+                    html += `<td contenteditable="true" class="cell-custom" data-col="${col}">${val}</td>`;
+                });
+                tr.innerHTML = html;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateStoryboardContent() {
+            const tbody = document.querySelector('#storyboard-table tbody');
+            tbody.innerHTML = '';
+            const scenes = getScenesFromCanvas();
+            
+            scenes.forEach((s, index) => {
+                const tr = document.createElement('tr');
+                
+                const imgData = (sceneMetadata[s.id] && sceneMetadata[s.id].visualImage) || null;
+                let imgHtml = '';
+                let boxClass = 'storyboard-img-box';
+                if (imgData) {
+                    imgHtml = `<img src="${imgData}">`;
+                    boxClass += ' has-image';
+                } else {
+                    imgHtml = '📷 上傳畫面';
+                }
+
+                const visualHtml = s.content.filter(c => c.type === 'action' || c.type === 'note').map(c => `<div>${c.text}</div>`).join('');
+                const audioHtml = s.content.filter(c => ['character', 'dialogue', 'sfx', 'parenthetical'].includes(c.type)).map(c => {
+                    if (c.type === 'character') return `<div><b>${c.text}</b></div>`;
+                    if (c.type === 'sfx') return `<div><i style="color:#9A3B3B">[${c.text}]</i></div>`;
+                    return `<div>${c.text}</div>`;
+                }).join('');
+
+                tr.innerHTML = `
+                    <td class="text-center align-middle"><span class="tbl-del-btn" onclick="deleteScene(this)">✕</span></td>
+                    <td class="font-bold text-center text-lg cell-id" contenteditable="true">${s.id}</td>
+                    <td class="cell-visual-meta">
+                        <div class="${boxClass}" onclick="triggerImageUpload('${s.id}')">${imgHtml}</div>
+                        <div class="text-xs text-stone-700 mt-2 font-semibold cell-loc" contenteditable="true">${s.loc}</div>
+                        <div class="text-[11px] text-stone-400 mt-1 cell-notes" contenteditable="true">鏡頭：${s.notes.join(', ') || '無'}</div>
+                    </td>
+                    <td class="align-top text-xs cell-visual-content" contenteditable="true">${visualHtml}</td>
+                    <td class="align-top text-xs cell-audio-content" contenteditable="true">${audioHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateOutlineContent() {
+            const tbody = document.querySelector('#outline-table tbody');
+            tbody.innerHTML = '';
+            const scenes = getScenesFromCanvas();
+
+            scenes.forEach((s, index) => {
+                const tr = document.createElement('tr');
+                const synopsis = (sceneMetadata[s.id] && sceneMetadata[s.id].synopsis) || '';
+                
+                tr.innerHTML = `
+                    <td class="text-center align-middle"><span class="tbl-del-btn" onclick="deleteScene(this)">✕</span></td>
+                    <td class="font-bold text-center cell-id">${s.id}</td>
+                    <td class="font-bold cell-loc text-xs">${s.loc}</td>
+                    <td contenteditable="true" class="outline-synopsis cell-synopsis text-xs leading-relaxed">${synopsis}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function syncTableToStandard() {
+            const rows = Array.from(document.querySelectorAll('#script-table tbody tr'));
+            canvasStd.innerHTML = '';
+            rows.forEach(row => {
+                const idCell = row.querySelector('.cell-id');
+                const locCell = row.querySelector('.cell-loc');
+                const castCell = row.querySelector('.cell-cast');
+                const contentCell = row.querySelector('.cell-content');
+
+                const id = idCell ? idCell.innerText.trim() : '';
+                const loc = locCell ? locCell.innerText.trim() : '';
+                
+                // 確保強制產生對應的 Heading 防止日後比對錯位
+                canvasStd.appendChild(createLine('heading', `${id}${id && loc ? '. ' : ''}${loc}`));
+
+                const castText = castCell ? castCell.innerText.trim() : '';
+                if (castText) {
+                    castText.split('\n').forEach(note => {
+                        if (note.trim()) canvasStd.appendChild(createLine('note', note.trim()));
+                    });
+                }
+
+                if (contentCell) {
+                    Array.from(contentCell.children).forEach(div => {
+                        let text = div.innerText.replace(/【|】|「|」|△/g, '').trim();
+                        if (!text) return;
+                        let type = 'action';
+                        if (div.innerHTML.includes('「')) type = 'dialogue';
+                        else if (div.innerHTML.includes('【')) type = 'character';
+                        else if (div.style.textAlign === 'right') type = 'transition';
+                        canvasStd.appendChild(createLine(type, text));
+                    });
+                }
+            });
+        }
+
+        function syncStoryboardToStandard() {
+            const rows = Array.from(document.querySelectorAll('#storyboard-table tbody tr'));
+            canvasStd.innerHTML = '';
+            rows.forEach(row => {
+                const idCell = row.querySelector('.cell-id');
+                const locCell = row.querySelector('.cell-loc');
+                
+                const id = idCell ? idCell.innerText.trim() : '';
+                const loc = locCell ? locCell.innerText.trim() : '';
+                
+                canvasStd.appendChild(createLine('heading', `${id}${id && loc ? '. ' : ''}${loc}`));
+
+                const notesCell = row.querySelector('.cell-notes');
+                const notesText = notesCell ? notesCell.innerText.replace('鏡頭：', '').trim() : '';
+                if (notesText && notesText !== '無') canvasStd.appendChild(createLine('note', notesText));
+
+                const visualCell = row.querySelector('.cell-visual-content');
+                if (visualCell) {
+                    Array.from(visualCell.children).forEach(div => {
+                         let text = div.innerText.trim();
+                         if(text) canvasStd.appendChild(createLine('action', text));
+                    });
+                }
+
+                const audioCell = row.querySelector('.cell-audio-content');
+                if (audioCell) {
+                    Array.from(audioCell.children).forEach(node => {
+                        let text = node.innerText.trim();
+                        if (!text) return;
+                        let html = node.innerHTML;
+                        if (html.includes('<b>')) {
+                            canvasStd.appendChild(createLine('character', text));
+                        } else if (html.includes('<i>') || text.startsWith('[')) {
+                            canvasStd.appendChild(createLine('sfx', text.replace(/^\[|\]$/g, '')));
+                        } else {
+                            canvasStd.appendChild(createLine('dialogue', text));
+                        }
+                    });
+                }
+            });
+        }
+
+        // ========== Word 匯出功能 ==========
+
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64.split(',')[1]);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function exportStandardToWord() {
+            const title = document.getElementById('script-title').value || '未命名劇本';
+            const author = document.getElementById('script-author').value || '';
+            const lines = Array.from(canvasStd.querySelectorAll('.script-line'));
+
+            const children = [];
+
+            children.push(new docx.Paragraph({
+                children: [new docx.TextRun({ text: title, bold: true, size: 48, font: '標楷體' })],
+                alignment: docx.AlignmentType.CENTER,
+                spacing: { before: 2400, after: 360 }
+            }));
+            children.push(new docx.Paragraph({
+                children: [new docx.TextRun({ text: author, size: 28, font: '標楷體' })],
+                alignment: docx.AlignmentType.CENTER,
+                spacing: { after: 2400 }
+            }));
+            
+            children.push(new docx.Paragraph({
+                pageBreakBefore: true
+            }));
+
+            lines.forEach(line => {
+                const type = line.getAttribute('data-type');
+                let text = line.innerText.replace(/\u200B/g, '').trim();
+                if (!text) return;
+
+                let paragraphConfig = {
+                    spacing: { before: 120, after: 120, line: 360, lineRule: "auto" }
+                };
+
+                let textRunConfig = { font: '標楷體', size: 24 };
+
+                if (type === 'heading') {
+                    textRunConfig.bold = true;
+                    textRunConfig.text = text;
+                    paragraphConfig.spacing = { before: 360, after: 120, line: 360, lineRule: "auto" };
+                    paragraphConfig.border = { bottom: { color: "333333", space: 4, value: "single", size: 12 } };
+                    paragraphConfig.children = [new docx.TextRun(textRunConfig)];
+                } else if (type === 'action') {
+                    textRunConfig.text = "△ " + text;
+                    paragraphConfig.children = [new docx.TextRun(textRunConfig)];
+                } else if (type === 'character') {
+                    textRunConfig.bold = true;
+                    textRunConfig.text = text;
+                    paragraphConfig.spacing = { before: 240, after: 60, line: 360, lineRule: "auto" };
+                    paragraphConfig.children = [new docx.TextRun(textRunConfig)];
+                } else if (type === 'parenthetical') {
+                    textRunConfig.size = 20; 
+                    textRunConfig.text = "(" + text + ")";
+                    paragraphConfig.indent = { left: 720 }; 
+                    paragraphConfig.children = [new docx.TextRun(textRunConfig)];
+                } else if (type === 'dialogue') {
+                    textRunConfig.text = "「" + text + "」";
+                    paragraphConfig.indent = { left: 720 };
+                    paragraphConfig.children = [new docx.TextRun(textRunConfig)];
+                } else if (type === 'transition') {
+                    textRunConfig.bold = true;
+                    textRunConfig.text = text;
+                    paragraphConfig.alignment = docx.AlignmentType.RIGHT;
+                    paragraphConfig.spacing = { before: 240, after: 120, line: 360, lineRule: "auto" };
+                    paragraphConfig.children = [new docx.TextRun(textRunConfig)];
+                } else if (type === 'note') {
+                    textRunConfig.bold = true;
+                    textRunConfig.color = "1E40AF";
+                    textRunConfig.text = text;
+                    paragraphConfig.children = [new docx.TextRun(textRunConfig)];
+                } else if (type === 'sfx') {
+                    textRunConfig.italic = true;
+                    textRunConfig.color = "B91C1C";
+                    textRunConfig.text = "［音效］" + text;
+                    paragraphConfig.children = [new docx.TextRun(textRunConfig)];
+                }
+
+                children.push(new docx.Paragraph(paragraphConfig));
+            });
+
+            const doc = new docx.Document({
+                sections: [{ properties: {}, children: children }]
+            });
+
+            docx.Packer.toBlob(doc).then(blob => {
+                saveAs(blob, `${title}_劇本.docx`);
+            });
+        }
+
+        function exportTableToWord() {
+            const title = document.getElementById('script-title').value || '未命名劇本';
+            const tableRows = document.querySelectorAll('#script-table tbody tr');
+
+            const headers = ['場次', '地點/時間', '人物/備註', '內容描述'];
+            customColumns.forEach(col => headers.push(col));
+
+            const tableHeaderCells = headers.map(h => new docx.TableCell({
+                children: [new docx.Paragraph({
+                    children: [new docx.TextRun({ text: h, bold: true, size: 20, font: '微軟正黑體' })],
+                    alignment: docx.AlignmentType.CENTER
+                })],
+                backgroundColor: "F3F4F6",
+                shading: { fill: "F3F4F6" },
+                verticalAlign: docx.VerticalAlign.CENTER
+            }));
+
+            const docRows = [new docx.TableRow({ children: tableHeaderCells })];
+
+            tableRows.forEach(row => {
+                const id = row.querySelector('.cell-id').innerText.trim() || " ";
+                const loc = row.querySelector('.cell-loc').innerText.trim() || " ";
+                const cast = row.querySelector('.cell-cast').innerText.trim() || " ";
+                
+                const contentCell = row.querySelector('.cell-content');
+                const contentParagraphs = Array.from(contentCell.children).map(div => {
+                    return new docx.Paragraph({
+                        children: [new docx.TextRun({ text: div.innerText.trim() || " ", size: 18, font: '微軟正黑體' })],
+                        spacing: { after: 60 }
+                    });
+                });
+
+                if (contentParagraphs.length === 0) contentParagraphs.push(new docx.Paragraph({ text: " " }));
+
+                const cells = [
+                    new docx.TableCell({ children: [new docx.Paragraph({ text: id, alignment: docx.AlignmentType.CENTER })] }),
+                    new docx.TableCell({ children: [new docx.Paragraph({ text: loc })] }),
+                    new docx.TableCell({ children: [new docx.Paragraph({ text: cast })] }),
+                    new docx.TableCell({ children: contentParagraphs })
+                ];
+
+                customColumns.forEach(col => {
+                    const cellVal = row.querySelector(`.cell-custom[data-col="${col}"]`).innerText.trim() || " ";
+                    cells.push(new docx.TableCell({ children: [new docx.Paragraph({ text: cellVal })] }));
+                });
+
+                docRows.push(new docx.TableRow({ children: cells }));
+            });
+
+            const wordTable = new docx.Table({
+                rows: docRows,
+                width: { size: 100, type: docx.WidthType.PERCENTAGE }
+            });
+
+            const doc = new docx.Document({
+                sections: [{
+                    properties: {},
+                    children: [
+                        new docx.Paragraph({
+                            children: [new docx.TextRun({ text: `${title} - 拍攝表`, bold: true, size: 36, font: '微軟正黑體' })],
+                            alignment: docx.AlignmentType.CENTER,
+                            spacing: { after: 480 }
+                        }),
+                        wordTable
+                    ]
+                }]
+            });
+
+            docx.Packer.toBlob(doc).then(blob => {
+                saveAs(blob, `${title}_拍攝表.docx`);
+            });
+        }
+
+        function exportStoryboardToWord() {
+            const title = document.getElementById('script-title').value || '未命名劇本';
+            const tableRows = document.querySelectorAll('#storyboard-table tbody tr');
+
+            const headers = ['鏡號', '畫面示意', '內容/動作', '聲音/備註'];
+            const tableHeaderCells = headers.map(h => new docx.TableCell({
+                children: [new docx.Paragraph({
+                    children: [new docx.TextRun({ text: h, bold: true, size: 20, font: '微軟正黑體' })],
+                    alignment: docx.AlignmentType.CENTER
+                })],
+                backgroundColor: "F3F4F6",
+                shading: { fill: "F3F4F6" },
+                verticalAlign: docx.VerticalAlign.CENTER
+            }));
+
+            const docRows = [new docx.TableRow({ children: tableHeaderCells })];
+
+            tableRows.forEach(row => {
+                const id = row.querySelector('.cell-id').innerText.trim() || " ";
+                const loc = row.querySelector('.cell-loc').innerText.trim() || " ";
+                const notes = row.querySelector('.cell-notes').innerText.trim() || " ";
+
+                const visualMetaChildren = [];
+                const imgData = (sceneMetadata[id] && sceneMetadata[id].visualImage) || null;
+                
+                if (imgData) {
+                    try {
+                        const buffer = base64ToArrayBuffer(imgData);
+                        visualMetaChildren.push(new docx.Paragraph({
+                            children: [
+                                new docx.ImageRun({
+                                    data: buffer,
+                                    transformation: { width: 160, height: 90 }
+                                })
+                            ],
+                            alignment: docx.AlignmentType.CENTER,
+                            spacing: { after: 120 }
+                        }));
+                    } catch (e) {
+                        visualMetaChildren.push(new docx.Paragraph({ text: "[圖片損壞或格式不符]" }));
+                    }
+                } else {
+                    visualMetaChildren.push(new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "［無圖片］", color: "999999", size: 16, italic: true })],
+                        alignment: docx.AlignmentType.CENTER,
+                        spacing: { after: 120 }
+                    }));
+                }
+
+                visualMetaChildren.push(new docx.Paragraph({
+                    children: [new docx.TextRun({ text: loc, bold: true, size: 18 })]
+                }));
+                visualMetaChildren.push(new docx.Paragraph({
+                    children: [new docx.TextRun({ text: notes, size: 16, color: "555555" })]
+                }));
+
+                const visualContent = row.querySelector('.cell-visual-content');
+                const visualContentParagraphs = Array.from(visualContent.children).map(div => {
+                    return new docx.Paragraph({
+                        children: [new docx.TextRun({ text: div.innerText.trim() || " ", size: 18, font: '微軟正黑體' })],
+                        spacing: { after: 60 }
+                    });
+                });
+                if (visualContentParagraphs.length === 0) visualContentParagraphs.push(new docx.Paragraph({ text: visualContent.innerText.trim() || " " }));
+
+                const audioContent = row.querySelector('.cell-audio-content');
+                const audioContentParagraphs = Array.from(audioContent.children).map(node => {
+                    return new docx.Paragraph({
+                        children: [new docx.TextRun({ text: node.innerText.trim() || " ", size: 18, font: '微軟正黑體' })],
+                        spacing: { after: 60 }
+                    });
+                });
+                if (audioContentParagraphs.length === 0) audioContentParagraphs.push(new docx.Paragraph({ text: audioContent.innerText.trim() || " " }));
+
+                const cells = [
+                    new docx.TableCell({ 
+                        children: [new docx.Paragraph({ text: id, alignment: docx.AlignmentType.CENTER, style: "font-bold" })],
+                        verticalAlign: docx.VerticalAlign.CENTER 
+                    }),
+                    new docx.TableCell({ children: visualMetaChildren }),
+                    new docx.TableCell({ children: visualContentParagraphs }),
+                    new docx.TableCell({ children: audioContentParagraphs })
+                ];
+
+                docRows.push(new docx.TableRow({ children: cells }));
+            });
+
+            const wordTable = new docx.Table({
+                rows: docRows,
+                width: { size: 100, type: docx.WidthType.PERCENTAGE }
+            });
+
+            const doc = new docx.Document({
+                sections: [{
+                    properties: {},
+                    children: [
+                        new docx.Paragraph({
+                            children: [new docx.TextRun({ text: `${title} - 分鏡表`, bold: true, size: 36, font: '微軟正黑體' })],
+                            alignment: docx.AlignmentType.CENTER,
+                            spacing: { after: 480 }
+                        }),
+                        wordTable
+                    ]
+                }]
+            });
+
+            docx.Packer.toBlob(doc).then(blob => {
+                saveAs(blob, `${title}_分鏡表.docx`);
+            });
+        }
+
+        function exportOutlineToWord() {
+            const title = document.getElementById('script-title').value || '未命名劇本';
+            const tableRows = document.querySelectorAll('#outline-table tbody tr');
+
+            const headers = ['場次', '場景標題', '重點大綱 (Synopsis)'];
+            const tableHeaderCells = headers.map(h => new docx.TableCell({
+                children: [new docx.Paragraph({
+                    children: [new docx.TextRun({ text: h, bold: true, size: 20, font: '微軟正黑體' })],
+                    alignment: docx.AlignmentType.CENTER
+                })],
+                backgroundColor: "F3F4F6",
+                shading: { fill: "F3F4F6" },
+                verticalAlign: docx.VerticalAlign.CENTER
+            }));
+
+            const docRows = [new docx.TableRow({ children: tableHeaderCells })];
+
+            tableRows.forEach(row => {
+                const id = row.querySelector('.cell-id').innerText.trim() || " ";
+                const loc = row.querySelector('.cell-loc').innerText.trim() || " ";
+                const synopsis = row.querySelector('.cell-synopsis').innerText.trim() || " ";
+
+                const cells = [
+                    new docx.TableCell({ 
+                        children: [new docx.Paragraph({ text: id, alignment: docx.AlignmentType.CENTER })],
+                        verticalAlign: docx.VerticalAlign.CENTER
+                    }),
+                    new docx.TableCell({ 
+                        children: [new docx.Paragraph({ text: loc })],
+                        verticalAlign: docx.VerticalAlign.CENTER
+                    }),
+                    new docx.TableCell({ 
+                        children: [new docx.Paragraph({ text: synopsis })] 
+                    })
+                ];
+
+                docRows.push(new docx.TableRow({ children: cells }));
+            });
+
+            const wordTable = new docx.Table({
+                rows: docRows,
+                width: { size: 100, type: docx.WidthType.PERCENTAGE }
+            });
+
+            const doc = new docx.Document({
+                sections: [{
+                    properties: {},
+                    children: [
+                        new docx.Paragraph({
+                            children: [new docx.TextRun({ text: `${title} - 分場大綱`, bold: true, size: 36, font: '微軟正黑體' })],
+                            alignment: docx.AlignmentType.CENTER,
+                            spacing: { after: 480 }
+                        }),
+                        wordTable
+                    ]
+                }]
+            });
+
+            docx.Packer.toBlob(doc).then(blob => {
+                saveAs(blob, `${title}_分場大綱.docx`);
+            });
+        }
+
+        async function handleExport() {
+            try {
+                if (currentMode === 'standard') { 
+                    exportStandardToWord(); 
+                }
+                else if (currentMode === 'table') { 
+                    saveCurrentTableState(); 
+                    exportTableToWord(); 
+                }
+                else if (currentMode === 'storyboard') { 
+                    exportStoryboardToWord(); 
+                }
+                else if (currentMode === 'outline') { 
+                    saveCurrentOutlineState(); 
+                    exportOutlineToWord(); 
+                }
+            } catch (err) {
+                alert("匯出 Word 時發生錯誤: " + err.message);
+                console.error(err);
+            }
+        }
+    </script>
+</body>
+</html>
